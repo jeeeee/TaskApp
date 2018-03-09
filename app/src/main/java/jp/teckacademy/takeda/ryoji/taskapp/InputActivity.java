@@ -4,14 +4,19 @@ import android.app.AlarmManager;
 import android.app.DatePickerDialog;
 import android.app.PendingIntent;
 import android.app.TimePickerDialog;
+import android.content.DialogInterface;
 import android.content.Intent;
+import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.support.v7.widget.Toolbar;
 import android.view.View;
+import android.widget.AdapterView;
+import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.DatePicker;
 import android.widget.EditText;
+import android.widget.Spinner;
 import android.widget.TimePicker;
 
 import java.util.Calendar;
@@ -19,14 +24,19 @@ import java.util.Date;
 import java.util.GregorianCalendar;
 
 import io.realm.Realm;
+import io.realm.RealmChangeListener;
 import io.realm.RealmResults;
 
 public class InputActivity extends AppCompatActivity {
 
+    public final static int REQUEST_CODE = 0;
+
     private int mYear, mMonth, mDay, mHour, mMinute;
     private Button mDateButton, mTimeButton;
     private EditText mTitleEdit, mContentEdit;
+    private Category mCategory;
     private Task mTask;
+
     private View.OnClickListener mOnDateClickListener = new View.OnClickListener() {
         @Override
         public void onClick(View v) {
@@ -70,6 +80,14 @@ public class InputActivity extends AppCompatActivity {
         }
     };
 
+    private View.OnClickListener mOnCategoryMakeClickListener = new View.OnClickListener() {
+        @Override
+        public void onClick(View v) {
+            Intent intent = new Intent(InputActivity.this, CategoryActivity.class);
+            startActivityForResult(intent, REQUEST_CODE);
+        }
+    };
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -88,15 +106,21 @@ public class InputActivity extends AppCompatActivity {
         mTimeButton = (Button) findViewById(R.id.times_button);
         mTimeButton.setOnClickListener(mOnTimeClickListener);
         findViewById(R.id.done_button).setOnClickListener(mOnDoneClickListener);
+
         mTitleEdit = (EditText) findViewById(R.id.title_edit_text);
         mContentEdit = (EditText) findViewById(R.id.content_edit_text);
+
+        findViewById(R.id.category_make_button).setOnClickListener(mOnCategoryMakeClickListener);
 
         // EXTRA_TASK から Task の id を取得して、 id から Task のインスタンスを取得する
         Intent intent = getIntent();
         int taskId = intent.getIntExtra(MainActivity.EXTRA_TASK, -1);
+
         Realm realm = Realm.getDefaultInstance();
         mTask = realm.where(Task.class).equalTo("id", taskId).findFirst();
         realm.close();
+
+        reloadCategory();
 
         if (mTask == null) {
             // 新規作成の場合
@@ -110,7 +134,6 @@ public class InputActivity extends AppCompatActivity {
             // 更新の場合
             mTitleEdit.setText(mTask.getTitle());
             mContentEdit.setText(mTask.getContents());
-
             Calendar calendar = Calendar.getInstance();
             calendar.setTime(mTask.getDate());
             mYear = calendar.get(Calendar.YEAR);
@@ -123,6 +146,43 @@ public class InputActivity extends AppCompatActivity {
             String timeString = String.format("%02d", mHour) + ":" + String.format("%02d", mMinute);
             mDateButton.setText(dateString);
             mTimeButton.setText(timeString);
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        if (requestCode == REQUEST_CODE) {
+            reloadCategory();
+        }
+    }
+
+    private void reloadCategory() {
+        Realm realm = Realm.getDefaultInstance();
+        RealmResults<Category> categoryRealmResults = realm.where(Category.class).findAllSorted("id");
+
+        ArrayAdapter<Category> mCategoryAdapter = new ArrayAdapter<>
+                (this, android.R.layout.simple_spinner_item, categoryRealmResults);
+        mCategoryAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+
+        Spinner mCategorySpinner = findViewById(R.id.category_spinner);
+
+        mCategorySpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                Spinner spinner = (Spinner) parent;
+                mCategory = (Category) spinner.getSelectedItem();
+            }
+
+            @Override
+            public void onNothingSelected(AdapterView<?> parent) {
+
+            }
+        });
+
+        mCategorySpinner.setAdapter(mCategoryAdapter);
+
+        if (mTask != null) {
+            mCategorySpinner.setSelection(mTask.getCategory().getId());
         }
     }
 
@@ -148,6 +208,10 @@ public class InputActivity extends AppCompatActivity {
 
         String title = mTitleEdit.getText().toString();
         String content = mContentEdit.getText().toString();
+        if (mCategory != null) {
+            mTask.setCategory(mCategory);
+            mTask.setCategoryId(mCategory.getId());
+        }
 
         mTask.setTitle(title);
         mTask.setContents(content);
